@@ -1,0 +1,80 @@
+---
+title: "Exercice 3"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+##Loading the necessary library and dataframe
+
+```{r,message=FALSE}
+library(tidyverse)
+library(zoo)
+options(pillar.sigfig=4)
+df <- read_tsv("/Users/beneverad/Documents/MSc/1. Semester/data_collection_storage/Data/qc_hourly.tsv")
+```
+
+## 1.1 Mean temperature $T_{AVG})$
+
+```{r}
+t_avg <- mean(df$th)
+t_avg
+```
+
+## 1.2 Mean daily amplitude $T_{AMP}$
+
+```{r}
+df %>% group_by(date) %>% 
+      summarise(min=min(th),max=max(th)) %>% 
+      mutate(range = max-min) %>% 
+      summarise(t_amp = mean(range))
+
+```
+
+## 1.3 Coefficient of Variation  $T_{CV}$
+
+```{r}
+df %>% summarise(t_cv=sd(th)/mean(th))
+
+```
+
+## 1.4 Flashiness $T_{FL}$
+
+```{r}
+df %>% mutate(diff = rollapply(th,
+                               width=2,
+                               align="right",
+                               FUN = function(x){abs(diff(x))},
+                               fill =0)) %>%
+    summarise(t_fl = sum(diff)/(length(diff)-1))
+
+
+```
+
+## 1.5 Most rapid temperature change  $T_{RAP}$
+
+```{r}
+df %>% mutate(highdiff = rollapply(th,
+                                   width = 6,
+                                   align = "right",
+                                   FUN = function(x){abs(max(x)-min(x))},
+                                   fill = 0)) %>% summarise(t_rap = max(highdiff))
+
+```
+
+## 1.6 Average day and night temperature $T_{DAY}$ and $T_{NHT}$
+
+```{r}
+df %>% mutate(period = ifelse((hour<6 | hour>=18),"night","day")) %>%
+  group_by(period) %>%
+  summarise(mean(th))
+
+```
+## 1.7 Fraction of NA-Values $T_{NA}$
+```{r}
+df %>% filter(origin == "R") %>% summarise(t_NA = length(origin)/length(df$origin))
+```
+
+

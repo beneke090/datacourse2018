@@ -1,0 +1,79 @@
+---
+title: "Exercice 2"
+author: "Ben Everad"
+date: "17 1 2019"
+output: html_document
+---
+
+
+##0 import Libraries and Data
+```{r setup, message=FALSE}
+library(tidyverse)
+library(zoo)
+library(lubridate)
+df <- read_tsv("/Users/beneverad/Documents/MSc/1. Semester/data_collection_storage/Data/10760763.tsv",skip=5)
+df1<-df
+```
+##0.5 Creating dttm
+```{r}
+df1$dttm <- paste(df1$date, df1$hm)
+df1$dttm <- ymd_hms(df1$dttm)
+df1 <- df1 %>% select (-c(id,date,hm))
+#reorder
+df1 <- df1[c("dttm", "ta", "lux")] 
+df1 <- df1 %>% filter(dttm>= date("2018-12-10"))
+```
+
+##1.1 Measurement range
+Checking whether the measured temperatures are in the measurable range. The HOBO manual determines the measurable range from -20 to +70
+```{r}
+#Hobo range
+hobmin = -20
+hobmax = 70
+df1 <- df1 %>% mutate(qc1 = ifelse(ta>=hobmax | ta<=hobmin,1,0))
+df1 %>% filter(qc1 == 1)
+```
+no rows were excluded
+
+##1.2 Plausible rate of change
+We check if the rate of change from one measurement to the next is higher than 1K. To do so, we mutate a control (ifelse) over the data, the control checks whether the absolute value of rollapply("diff") is higher or equal to 1 
+```{r}
+df2 <- df1 %>% mutate(qc2 = ifelse(abs(rollapply(ta, 
+                               width = 2,
+                               FUN = "diff",
+                               align = "right",
+                               fill = 0))>=1,1,0))
+df2 %>% select(c(dttm,ta,qc2)) %>% filter(qc2==1)
+```
+17 rows where filtered out
+
+##1.3 Minimum variability
+We also flag a dataset, when temperatures haven't changed for 60 minutes. The function *allSame* is created, it checks a list whether all items are equal or not; returns True when the are all equal. The rollapply applies this function to the actual row and the 5 rows above.
+```{r}
+allSame <- function(x) length(unique(x)) == 1
+df3 <- df2 %>% mutate(qc3 = 0+rollapply(ta,
+                              width = 6,
+                              FUN = allSame,
+                              align ="right",fill=0))
+df3 %>% select(c(dttm,ta,qc3)) %>% filter(qc3==1)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.

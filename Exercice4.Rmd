@@ -1,0 +1,89 @@
+---
+title: "Exercice 4"
+author: "Ben Everad"
+date: "14 1 2019"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+##0. import Libraries and Data
+```{r,message=FALSE}
+library(tidyverse)
+library(zoo)
+library(ggplot2)
+library(lubridate)
+library(scales)
+library(viridis)
+library(rio)
+
+df <- read_tsv("/Users/beneverad/Documents/MSc/1. Semester/data_collection_storage/Data/qc_hourly.tsv")
+df$dttm <- ymd_hms(strptime(paste(df$date,df$hour), "%Y-%m-%d %H"))
+```
+
+##1. Line plot with *geom_line*
+```{r}
+ggplot(data=df %>% mutate(night = ifelse(hour>18|hour<7,"night","day")),aes(x=dttm,y=th)) +
+  geom_point(size=.5, aes(color = night)) + 
+  labs(title = "title",
+     subtitle = "subtitle if needed",
+     x = "Days", y = expression('Temperature('*~degree*C*')'))+
+  theme(legend.title=element_blank())+
+  geom_line(data = df %>% mutate(avg = rollapply(
+    th, FUN = mean, fill = NA, width = 12, align = "right")) %>%
+      na.omit, aes(x=dttm,y=avg))
+```
+##2. Histogram with *geom_histogram*
+
+```{r}
+ggplot(data=df,aes(th))+geom_histogram(binwidth = 0.5,fill="tomato3",color="turquoise3")
+```
+## 3. Daily temperature distribution with *geom_boxplot*
+```{r}
+ggplot(data=df ,aes(x=date,y=th,group = date)) + geom_violin(width = 2)+
+  theme(axis.text.x = element_text(angle=90))+
+  scale_x_date(breaks = "5 day",labels = date_format("%b/%d"),limits = c(min(df$date)-1,max(df$date)+1)) 
+```
+
+## 4. Heatmap (Date + hours)
+
+```{r}
+ggplot(data=df ,aes(x=date,y=hour,fill = th))+geom_tile(color="white") + scale_fill_viridis_c(option = "plasma")
+```
+
+## 5. scatterplot
+```{r}
+hoboID = 10760763
+dfidg <- import("https://docs.google.com/spreadsheets/d/1UHox2I07ghbn0XL8W8j6Rwpewl625vPnnqodUE2Eq8M/edit#gid=1013859678") %>% 
+            as.tibble() %>% 
+            gather("Tamp", "Tcv", "Tfl", "Trap", "Tday", 
+                           "Tnht", "Tna", key = "variable", value = "val") %>%
+            mutate(type = if_else(hobo == as.numeric(hoboID), "my_hobo", "others"))
+dfidg$type[which(is.na(dfidg$hobo))] <- "others"
+dfidg$type <- factor(dfidg$type, levels=c ("others", "my_hobo"), 
+                       labels = c("Other", "My Hobo") )
+col <- c("#E69F00", "blue", "green", "red")
+dfidg$variable <- factor(dfidg$variable,
+    levels = c("Tamp",  "Tcv",  "Tfl", "Trap", "Tday", "Tnht", "Tna"),
+    labels = c("Amplitude", "Coef. of. Var.", "Flashiness",
+               "Max. Td_6hr", "Mean Day T", "Mean Night T", "Fraction NAs"))
+  
+# plot
+ggplot(data = dfidg) + 
+    facet_wrap(~ variable) +
+    geom_point(aes(x = Tavg, y = val, shape = type, color= Exposition, fill = Exposition, size = type)) + 
+    scale_shape_manual(values = c(4, 19)) +
+    scale_size_manual(values = c(1, 2)) +
+    scale_color_manual(values = col) +
+    scale_fill_manual(values = col) +
+    ylab("value of indice") + xlab("average temperature") +
+    theme(panel.spacing = unit(0,"pt"),
+          legend.position = c(0.8,0.1), legend.box = "horizontal")
+```
+
+
+
