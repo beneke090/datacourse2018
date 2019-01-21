@@ -26,9 +26,8 @@ con <- dbConnect(drv, host='v45522.1blu.de', port=5432, user=getPass('Provide th
                  password=getPass('Provide the password'), dbname='datamanagement')
 ```
 
-# PostGIS
 
-
+#try task 2
 ```{sql connection=con}
 select r.hobo_id,
 	count(r.temperature), 
@@ -50,39 +49,7 @@ select r.hobo_id,
 ```
 
 
-
-```{sql connection=con}
-SELECT
-  hobo_id,
-  avgnight,
-  avgday,
-  (SELECT avgnight from avgtable WHERE hobo_id = 10760763)
-  from 
-      (SELECT h.hobo_id,
-        night.avgnight,
-        day.avgday,
-        ST_DISTANCE(ST_TRANSFORM(geom,3857),
-      					(SELECT ST_TRANSFORM(geom,3857) from hobo where hobo_id = 10760763 AND year = 2019)) AS   distanz_m
-      	
-      					
-        from hobo AS h
-          inner join (SELECT hobo_id,
-          avg(temperature) as avgnight
-          
-          from raw_data
-          WHERE tstamp > '2018-9-10' AND (EXTRACT(HOUR FROM tstamp) <6 OR EXTRACT(HOUR FROM tstamp) >=18)
-          group By hobo_id) as night on (h.hobo_id = night.hobo_id)
-          
-          inner join (SELECT hobo_id,
-          avg(temperature) as avgday
-          
-          from raw_data
-          WHERE tstamp > '2018-9-10' AND (EXTRACT(HOUR FROM tstamp) >=6 AND EXTRACT(HOUR FROM tstamp) <18)
-          group By hobo_id) as day on (h.hobo_id = day.hobo_id)
-          WHERE h.year = 2019) as avgtable
-    
-    
-```
+temp
 
 ```{sql connection=con}
 SELECT DISTINCT(hobo_id)
@@ -93,7 +60,7 @@ SELECT DISTINCT(hobo_id)
     group By hobo_id
 ```
 
-
+##try task 3
 
 ```{sql connection=con}
 SELECT h.hobo_id,
@@ -129,6 +96,8 @@ SELECT h.hobo_id,
     WHERE h.year = 2019
 ```
 
+
+##temp
 ```{sql connection = con}
 SELECT hobo_id, avg(temperature) from raw_data
     WHERE hobo_id = 10760763 AND tstamp > '2018-9-10' AND (EXTRACT(HOUR FROM tstamp) <6 OR EXTRACT(HOUR FROM tstamp) >=18)
@@ -138,145 +107,6 @@ SELECT hobo_id, avg(temperature) from raw_data
 
 # Loading spatial data to R
 
-```{sql connection=con, output.var="hobo"}
-select id, hobo_id, st_x(geom) as lon, st_y(geom) as lat from hobo where geom is not null
-```
-```{r}
-ggplot(hobo, aes(x=lon, y=lat)) + geom_point(shape=18)
-```
-
-# Enabling spatial functions
-
-One of the most important spatial funcitons is PostGIS ability to transform coordinates from and into any coordinate system defined in 
-the spatial_ref_sys table. This is extremly helpful, when we want to combine our data with external datasources that force a specific CRS. Secondly, when applying spatial functions and calculating relations, distances or areas we must not use an unsuitable CRS 
-in order to prevent big calculation mistakes.<br>
-PostGIS knows two helpful functions: *ST_Transform* for applying a transformation and *ST_SetCRS* for setting the CRS information in 
-case they are missing in the GEOMETRY object.
-
-```{sql connection=con, output.var="hobo.utm"}
-select id, hobo_id, st_x(st_transform(geom, 25832)) as lon, st_y(st_transform(geom, 25832)) as lat 
-  from hobo where geom is not null  and st_y(geom) < 48.1
-```
-```{r}
-ggplot(hobo.utm, aes(x=lon, y=lat)) + geom_point(shape=18)
-```
-
-It is also possible to calculate distances in the database. Once calculated, these distance can be used like any other attribute, this 
-means you can also sort or group by distances. Knowing this, it is for example easy to find the next station for a specific location, or a set of locations.<br>
-Let's find a random hobo (od id 42) and search the database for the the closest and farest feature.
-
-```{sql connection=con}
-select * from hobo where id=42
-```
-```{sql connection=con}
-select 
-  st_distance(geom, (select geom from hobo where id=42)) as distance, 
-  * 
-from hobo 
-where id!=42 and geom is not null 
-order by distance ASC
-```
-```{sql connection=con}
-select 'closest' as description, id, hobo_id, distance / 1000 as "distance [km]" from 
-(
-  select  
-    st_distance(st_transform(geom, 25832), (select st_transform(geom, 25832) from hobo where id=42)) as distance, 
-    id, hobo_id 
-    from hobo 
-  where id!=42 and geom is not null 
-  order by distance ASC limit 1
-) t1
-union
-select 'farest' as description, id, hobo_id, distance / 1000 as "distance [km]" from
-(
-  select  
-    st_distance(st_transform(geom, 25832), (select st_transform(geom, 25832) from hobo where id=42)) as distance, 
-    id, hobo_id 
-    from hobo 
-  where id!=42 and geom is not null 
-  order by distance DESC limit 1
-) t2
-
-```
-
-It is also possible to subset the table and filter the stations to be within a specific distance to our random HOBO (e.g. 2.5km).
-
-```{sql connection=con}
-select id, hobo_id from hobo where st_distance(st_transform(geom, 25832), (select st_transform(geom, 25832) from hobo where id=42)) <= 2500
-```
-```{sql connection=con}
-select id, hobo_id from hobo where st_within(st_transform(geom, 25832), st_buffer((select st_transform(geom, 25832) from hobo where id=42), 2500))
-```
-
-These two solutions lead to an identical solution, but there is something very different happening. It is very good to have different ways of calculating the same result. 
-The way PostgreSQL will find the selected features can be described as a query plan. This is esentially, what the computer is planning to do and, more important, why it came to these decisions. Therefore it is a very helpful tool to be able to print out these query plans when trying to identify dropping performances. 
-Another helpful information of a query plan is the total runtime on the machine. This does not include the time the data needs to be 
-transferred to your computer and the time a client application needs to visualize the data, which is usually the bottleneck but has 
-nothing to do with the actual database performance.<br>
-In PostgreSQL you can prefix any <span style="color:blue">SELECT</span> statement with <span style="color:blue">EXPLAIN ANALYZE</span>
-to make Postgres print out the query plan instead of the results.
-
-```{sql connection=con}
-explain analyze select id, hobo_id from hobo where st_distance(st_transform(geom, 25832), (select st_transform(geom, 25832) from hobo where id=42)) <= 2500
-```
-```{sql connection=con}
-explain analyze select id, hobo_id from hobo where st_within(st_transform(geom, 25832), st_buffer((select st_transform(geom, 25832) from hobo where id=42), 2500))
-```
-
-# GIS in the database
-
-The database includes several tables containing data uploaded from the WaBoA (Wasser- und Bodenatlas Baden-W??rttemberg). 
-This is a major source for geodata in the region used by hydrologists quite frequently. Among others, you will find a table called
-vegetation_cover there. Let's have a look on that table.
-
-```{sql connection=con}
-select * from vegetation_cover limit 5
-```
-
-The description_id seems to be a foreign key on a lookup table. The table containing the description for each kind of vegetation cover class is called 'vegetation_cover_description'. To get a better insight, join the two tables and load the geometry 
-in a human readable way.
-
-```{sql connection=con}
-select vc.id, d.description, st_asewkt(vc.geom) from vegetation_cover vc join vegetation_cover_description d on vc.description_id=d.id limit 5
-```
-
-The geometry fields contain Polygons. We could instead use the area.
-
-```{sql connection=con}
-select vc.id, d.description, st_area(vc.geom) from vegetation_cover vc join vegetation_cover_description d on vc.description_id=d.id limit 5
-```
-
-Another table from WaBoA is the catchment table (Einzugsgebiete). These are all 'official' LUBW catchments. 
-Note that these catchments do overlap, as they are derived on different levels. 
-One thing we could do is join the catchment table to the hobo table based on the location. The correct spatial query is a WITHIN or CONTAINS, based on which of both geometries you are querying against.
-
-```{sql connection=con}
-select * from hobo h join catchments cth on st_within(h.geom, cth.geom)
-```
-
-Rember that this does not work, as the two tables use different CRS. A GIS system will however just use the coordinates to perform a query. 
-
-```{sql connection=con}
-select * from hobo h join catchments cth on st_within(st_transform(h.geom, 31467), cth.geom)
-```
-
-
-If you build your query like this, PostgreSQL will use the first matching feature from the einzugsgebiete table. To verify, that our results are correct, we need to count the instances, that do fulfill the connection conditional.
-
-```{sql connection=con}
-select h.id, h.hobo_id, count(cth.id) from hobo h 
-  left outer join catchments cth on st_within(st_transform(h.geom, 31467), cth.geom)
-group by h.id, h.hobo_id
-```
-
-It is also possbile to select from a <span style="color: blue;">SELECT</span> query. This way we could use the joint statement to count the hobo occurances per catchment.
-
-```{sql connection=con}
-select name, count(id) as amount_hobos from 
-(select h.id, cth.name from hobo h join catchments cth on st_within(st_transform(h.geom, 31467), cth.geom)) as joint
-group by name
-order by amount_hobos DESC
-```
 
 
 # cleanup
