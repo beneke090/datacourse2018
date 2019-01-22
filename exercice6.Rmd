@@ -61,51 +61,127 @@ SELECT DISTINCT(hobo_id)
 ```
 
 ##try task 3
-
+Task
 ```{sql connection=con}
 SELECT h.hobo_id,
   night.avgnight,
   day.avgday,
   ST_DISTANCE(ST_TRANSFORM(geom,3857),
 					(SELECT ST_TRANSFORM(geom,3857) from hobo where hobo_id = 10760763 AND year = 2019)) AS   distanz_m,
-	abs(night.avgnight - (SELECT avg(temperature) from raw_data
-    WHERE hobo_id = 10760763 AND tstamp > '2018-9-10' AND (EXTRACT(HOUR FROM tstamp) <6 OR EXTRACT(HOUR FROM tstamp) >=18)
-    group By hobo_id)) as diffnight,
-    abs(day.avgday - (SELECT avg(temperature) from raw_data
-    WHERE hobo_id = 10760763 AND tstamp > '2018-9-10' AND (EXTRACT(HOUR FROM tstamp) >=6 AND EXTRACT(HOUR FROM tstamp) <18)
-    group By hobo_id)) as diffday
+	abs(night.avgnight - (SELECT avg(th) from quality_checked_all
+        WHERE hobo_id = 10760763  AND (EXTRACT(HOUR FROM dttm) <6 OR EXTRACT(HOUR FROM dttm) >=18)
+        group By hobo_id)) as diffnight,
+  abs(day.avgday - (SELECT avg(th) from quality_checked_all
+        WHERE hobo_id = 10760763 AND (EXTRACT(HOUR FROM dttm) >=6 AND EXTRACT(HOUR FROM dttm) <18)
+        group By hobo_id)) as diffday,
+  rank1.ranked as rank
     
 				
 	
 					
   from hobo AS h
     inner join (SELECT hobo_id,
-    avg(temperature) as avgnight
+    avg(th) as avgnight
     
-    from raw_data
-    WHERE tstamp > '2018-9-10' AND (EXTRACT(HOUR FROM tstamp) <6 OR EXTRACT(HOUR FROM tstamp) >=18)
+    from quality_checked_all
+    WHERE (EXTRACT(HOUR FROM dttm) <6 OR EXTRACT(HOUR FROM dttm) >=18)
     group By hobo_id) as night on (h.hobo_id = night.hobo_id)
     
     inner join (SELECT hobo_id,
-    avg(temperature) as avgday
+    avg(th) as avgday
     
-    from raw_data
-    WHERE tstamp > '2018-9-10' AND (EXTRACT(HOUR FROM tstamp) >=6 AND EXTRACT(HOUR FROM tstamp) <18)
+    from quality_checked_all
+    WHERE  (EXTRACT(HOUR FROM dttm) >=6 AND EXTRACT(HOUR FROM dttm) <18)
     group By hobo_id) as day on (h.hobo_id = day.hobo_id)
+    
+    inner join (
+          SELECT dist.hobo_id,
+                  (SELECT h3.ranked FROM
+                            (SELECT h2.hobo_id, h2.avgnight, RANK() OVER(order by h2.avgnight DESC) as ranked  FROM
+                                  (SELECT h.hobo_id,
+                                  		ST_DISTANCE(ST_TRANSFORM(geom,3857),
+                                  					(SELECT ST_TRANSFORM(geom,3857) from hobo where hobo_id = dist.hobo_id AND year = 2019)) as distance,
+                                  		night.avgnight as avgnight
+                                  		FROM hobo as h
+                                  		inner join (SELECT hobo_id,
+                                          avg(th) as avgnight
+                                      
+                                          from quality_checked_all
+                                          WHERE (EXTRACT(HOUR FROM dttm) <6 OR EXTRACT(HOUR FROM dttm) >=18)
+                                          group By hobo_id) as night on (h.hobo_id = night.hobo_id)
+                                  				    	WHERE year = 2019) as h2
+                            WHERE distance<1000) as h3
+                  
+                  WHERE h3.hobo_id = dist.hobo_id)
+          FROM (SELECT DISTINCT(hobo_id) from quality_checked_all) as dist    
+    ) as rank1 on ( h.hobo_id = rank1.hobo_id)
+    
+    WHERE h.year = 2019
+
+```
+as create view
+```{sql connection=con}
+CREATE OR REPLACE VIEW task3_beneverad AS
+SELECT h.hobo_id,
+  night.avgnight,
+  day.avgday,
+  ST_DISTANCE(ST_TRANSFORM(geom,3857),
+					(SELECT ST_TRANSFORM(geom,3857) from hobo where hobo_id = 10760763 AND year = 2019)) AS   distanz_m,
+	abs(night.avgnight - (SELECT avg(th) from quality_checked_all
+        WHERE hobo_id = 10760763  AND (EXTRACT(HOUR FROM dttm) <6 OR EXTRACT(HOUR FROM dttm) >=18)
+        group By hobo_id)) as diffnight,
+  abs(day.avgday - (SELECT avg(th) from quality_checked_all
+        WHERE hobo_id = 10760763 AND (EXTRACT(HOUR FROM dttm) >=6 AND EXTRACT(HOUR FROM dttm) <18)
+        group By hobo_id)) as diffday,
+  rank1.ranked as rank
+    
+				
+	
+					
+  from hobo AS h
+    inner join (SELECT hobo_id,
+    avg(th) as avgnight
+    
+    from quality_checked_all
+    WHERE (EXTRACT(HOUR FROM dttm) <6 OR EXTRACT(HOUR FROM dttm) >=18)
+    group By hobo_id) as night on (h.hobo_id = night.hobo_id)
+    
+    inner join (SELECT hobo_id,
+    avg(th) as avgday
+    
+    from quality_checked_all
+    WHERE  (EXTRACT(HOUR FROM dttm) >=6 AND EXTRACT(HOUR FROM dttm) <18)
+    group By hobo_id) as day on (h.hobo_id = day.hobo_id)
+    
+    inner join (
+          SELECT dist.hobo_id,
+                  (SELECT h3.ranked FROM
+                            (SELECT h2.hobo_id, h2.avgnight, RANK() OVER(order by h2.avgnight DESC) as ranked  FROM
+                                  (SELECT h.hobo_id,
+                                  		ST_DISTANCE(ST_TRANSFORM(geom,3857),
+                                  					(SELECT ST_TRANSFORM(geom,3857) from hobo where hobo_id = dist.hobo_id AND year = 2019)) as distance,
+                                  		night.avgnight as avgnight
+                                  		FROM hobo as h
+                                  		inner join (SELECT hobo_id,
+                                          avg(th) as avgnight
+                                      
+                                          from quality_checked_all
+                                          WHERE (EXTRACT(HOUR FROM dttm) <6 OR EXTRACT(HOUR FROM dttm) >=18)
+                                          group By hobo_id) as night on (h.hobo_id = night.hobo_id)
+                                  				    	WHERE year = 2019) as h2
+                            WHERE distance<1000) as h3
+                  
+                  WHERE h3.hobo_id = dist.hobo_id)
+          FROM (SELECT DISTINCT(hobo_id) from quality_checked_all) as dist    
+    ) as rank1 on ( h.hobo_id = rank1.hobo_id)
     
     WHERE h.year = 2019
 ```
 
-
-##temp
+# note 
 ```{sql connection = con}
-SELECT hobo_id, avg(temperature) from raw_data
-    WHERE hobo_id = 10760763 AND tstamp > '2018-9-10' AND (EXTRACT(HOUR FROM tstamp) <6 OR EXTRACT(HOUR FROM tstamp) >=18)
-    group By hobo_id
-
+SELECT * from task3_beneverad
 ```
-
-# Loading spatial data to R
 
 
 
