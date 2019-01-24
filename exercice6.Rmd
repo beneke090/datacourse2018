@@ -22,8 +22,7 @@ require(ggplot2)
 
 # establish the connection
 drv <- dbDriver('PostgreSQL')
-con <- dbConnect(drv, host='v45522.1blu.de', port=5432, user=getPass('Provide the user'), 
-                 password=getPass('Provide the password'), dbname='datamanagement')
+con <- dbConnect(drv, host='v45522.1blu.de', port=5432, user=getPass('Provide the user'),password=getPass('Provide the password'), dbname='datamanagement')
 ```
 
 
@@ -33,8 +32,8 @@ select r.hobo_id,
 	count(r.temperature), 
 	count(*) FILTER (WHERE temperature >0) AS warm,
 	(SELECT count(*) from (SELECT 10760763 as hobo_id,
-					ST_DISTANCE(ST_TRANSFORM(geom,3857),
-					(SELECT ST_TRANSFORM(geom,3857) from hobo where hobo_id = 10760763 AND year = 2019)) AS distanz_m
+					ST_DISTANCE(ST_TRANSFORM(geom,31467),
+					(SELECT ST_TRANSFORM(geom,31467) from hobo where hobo_id = 10760763 AND year = 2019)) AS distanz_m
 					FROM hobo
 					where hobo_id != 10760763 AND year = 2019 
 			) foo
@@ -47,27 +46,57 @@ select r.hobo_id,
 
 	
 ```
-
-
-temp
-
+or
 ```{sql connection=con}
-SELECT DISTINCT(hobo_id)
-    
-    
-    from hobo
-    where year = 2019
-    group By hobo_id
+SELECT description, value FROM (
+      select 1 as rowcount,'hobo_id' as description, r.hobo_id as value
+      	from raw_data as r
+      	WHERE r.tstamp > '2018-08-10' AND r.hobo_id = 10760763
+      	group by r.hobo_id
+      UNION
+      SELECT 2,'raw data', count(*)
+      	from raw_data as r
+      	WHERE r.tstamp > '2018-08-10' AND r.hobo_id = 10760763
+      UNION
+      SELECT 3,'checked data', count(*)
+      	from quality_checked_all as qc
+      	WHERE qc.hobo_id = '10760763'
+      UNION
+      SELECT 4,'hobos within 2km 2019',count(*) from 
+          (SELECT 10760763 as hobo_id,
+      		ST_DISTANCE(ST_TRANSFORM(geom,31467),
+      					(SELECT ST_TRANSFORM(geom,31467) from hobo where hobo_id = 10760763 AND year = 2019))  as distanz_m
+      				  FROM hobo
+      					where hobo_id != 10760763 AND year = 2019 
+      			    ) foo
+      		WHERE foo.distanz_m <2000
+      UNION
+      SELECT 5,'hobos within 2km',count(*) from 
+          (SELECT 10760763 as hobo_id,
+      		ST_DISTANCE(ST_TRANSFORM(geom,31467),
+      					(SELECT ST_TRANSFORM(geom,31467) from hobo where hobo_id = 10760763))  as distanz_m
+      				  FROM hobo
+      					where hobo_id != 10760763 
+      			    ) foo
+      		WHERE foo.distanz_m <2000
+      UNION
+      SELECT 6,'used in 2018',CASE WHEN 10760763 in (SELECT hobo_id from hobo where year = 2018) THEN 1 else 0 END
+      UNION
+      SELECT 7,'used in 2017',CASE WHEN 10760763 in (SELECT hobo_id from hobo where year = 2017) THEN 1 else 0 END) as tb
+      ORDER BY rowcount
+
 ```
 
-##try task 3
+
+
+##Task 3
 Task
 ```{sql connection=con}
 SELECT h.hobo_id,
   night.avgnight,
   day.avgday,
-  ST_DISTANCE(ST_TRANSFORM(geom,3857),
-					(SELECT ST_TRANSFORM(geom,3857) from hobo where hobo_id = 10760763 AND year = 2019)) AS   distanz_m,
+  ST_DISTANCE(ST_TRANSFORM(geom,31467),
+					(SELECT ST_TRANSFORM(geom,31467) from hobo where hobo_id = 10760763 AND year = 2019)) AS   distanz_m,
 	abs(night.avgnight - (SELECT avg(th) from quality_checked_all
         WHERE hobo_id = 10760763  AND (EXTRACT(HOUR FROM dttm) <6 OR EXTRACT(HOUR FROM dttm) >=18)
         group By hobo_id)) as diffnight,
@@ -99,8 +128,8 @@ SELECT h.hobo_id,
                   (SELECT h3.ranked FROM
                             (SELECT h2.hobo_id, h2.avgnight, RANK() OVER(order by h2.avgnight DESC) as ranked  FROM
                                   (SELECT h.hobo_id,
-                                  		ST_DISTANCE(ST_TRANSFORM(geom,3857),
-                                  					(SELECT ST_TRANSFORM(geom,3857) from hobo where hobo_id = dist.hobo_id AND year = 2019)) as distance,
+                                  		ST_DISTANCE(ST_TRANSFORM(geom,31467),
+                                  					(SELECT ST_TRANSFORM(geom,31467) from hobo where hobo_id = dist.hobo_id AND year = 2019)) as distance,
                                   		night.avgnight as avgnight
                                   		FROM hobo as h
                                   		inner join (SELECT hobo_id,
@@ -125,8 +154,8 @@ CREATE OR REPLACE VIEW task3_beneverad AS
 SELECT h.hobo_id,
   night.avgnight,
   day.avgday,
-  ST_DISTANCE(ST_TRANSFORM(geom,3857),
-					(SELECT ST_TRANSFORM(geom,3857) from hobo where hobo_id = 10760763 AND year = 2019)) AS   distanz_m,
+  ST_DISTANCE(ST_TRANSFORM(geom,31467),
+					(SELECT ST_TRANSFORM(geom,31467) from hobo where hobo_id = 10760763 AND year = 2019)) AS   distanz_m,
 	abs(night.avgnight - (SELECT avg(th) from quality_checked_all
         WHERE hobo_id = 10760763  AND (EXTRACT(HOUR FROM dttm) <6 OR EXTRACT(HOUR FROM dttm) >=18)
         group By hobo_id)) as diffnight,
@@ -158,8 +187,8 @@ SELECT h.hobo_id,
                   (SELECT h3.ranked FROM
                             (SELECT h2.hobo_id, h2.avgnight, RANK() OVER(order by h2.avgnight DESC) as ranked  FROM
                                   (SELECT h.hobo_id,
-                                  		ST_DISTANCE(ST_TRANSFORM(geom,3857),
-                                  					(SELECT ST_TRANSFORM(geom,3857) from hobo where hobo_id = dist.hobo_id AND year = 2019)) as distance,
+                                  		ST_DISTANCE(ST_TRANSFORM(geom,31467),
+                                  					(SELECT ST_TRANSFORM(geom,31467) from hobo where hobo_id = dist.hobo_id AND year = 2019)) as distance,
                                   		night.avgnight as avgnight
                                   		FROM hobo as h
                                   		inner join (SELECT hobo_id,
@@ -183,14 +212,45 @@ SELECT h.hobo_id,
 SELECT * from task3_beneverad
 ```
 
+highest rank 1
+
+Task4 try
+
+
+
+
+# Loading spatial data to R
+
+##task4
+```{sql connection = con}
+SELECT
+    d.name,
+    min(th),
+    avg(th),
+    max(th),
+    avg(th) FILTER (WHERE light < (SELECT percentile_cont(0.75) within group (order by light) FROM raw_data)) as avgquartile,
+    avg(th) FILTER (WHERE light = 0) as avgdark,
+    percentile_cont(.9) within group (order by th asc)
+          FILTER( WHERE (EXTRACT(HOUR FROM dttm) >=6 AND EXTRACT(HOUR FROM dttm) <18) ) as per_day,
+    percentile_cont(.9) within group (order by th asc)
+          FILTER( WHERE (EXTRACT(HOUR FROM dttm) <6 OR EXTRACT(HOUR FROM dttm) >=18) ) as per_night,
+    count(distinct hobo_id)
+FROM
+      districts as d,
+      (SELECT qc.hobo_id, avg(qc.th) as th, qc.dttm, avg(rd.light) as light, h.geom from quality_checked_all as qc
+      left join raw_data as rd on qc.hobo_id = rd.hobo_id and qc.dttm = date_trunc('hour', rd.tstamp)
+      
+      left join hobo as h on qc.hobo_id = h.hobo_id
+      
+      group by qc.hobo_id, qc.dttm, h.geom) as h3
+WHERE st_within(h3.geom,(SELECT geom FROM districts WHERE name = d.name))
+group by d.name
+```
+
+
 
 
 # cleanup
 ```{r}
 dbDisconnect(con)
 ```
-
-
-
-
-
